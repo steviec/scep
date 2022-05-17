@@ -58,7 +58,7 @@ func main() {
 		flLogJSON           = flag.Bool("log-json", envBool("SCEP_LOG_JSON"), "output JSON logs")
 		flInitCA			= flag.Bool("init-ca", envBool("SCEP_INIT_CA"), "initialize CA if has no keys")	
 		flSignServerAttrs   = flag.Bool("sign-server-attrs", envBool("SCEP_SIGN_SERVER_ATTRS"), "sign cert attrs for server usage")
-		flLambda     		= flag.Bool("lambda", false, "Run using a lambda")
+		flLambda     		= flag.Bool("lambda", envBool("SCEP_LAMBDA"), "Run using a lambda")
 	)
 	flag.Usage = func() {
 		flag.PrintDefaults()
