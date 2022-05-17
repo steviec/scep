@@ -22,6 +22,9 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+
+	"github.com/aws/aws-lambda-go/lambda"
+	"github.com/awslabs/aws-lambda-go-api-proxy/httpadapter"	
 )
 
 // version info
@@ -55,6 +58,7 @@ func main() {
 		flLogJSON           = flag.Bool("log-json", envBool("SCEP_LOG_JSON"), "output JSON logs")
 		flInitCA			= flag.Bool("init-ca", envBool("SCEP_INIT_CA"), "initialize CA if has no keys")	
 		flSignServerAttrs   = flag.Bool("sign-server-attrs", envBool("SCEP_SIGN_SERVER_ATTRS"), "sign cert attrs for server usage")
+		flLambda     		= flag.Bool("lambda", false, "Run using a lambda")
 	)
 	flag.Usage = func() {
 		flag.PrintDefaults()
@@ -182,8 +186,15 @@ func main() {
 	// start http server
 	errs := make(chan error, 2)
 	go func() {
-		lginfo.Log("transport", "http", "address", httpAddr, "msg", "listening")
-		errs <- http.ListenAndServe(httpAddr, h)
+		if *flLambda {
+			// Proxies requests from the AWS API Gateway to go's http handlers
+			// https://github.com/awslabs/aws-lambda-go-api-proxy
+			lginfo.Log("transport", "http", "context", "lambda", "msg", "listening")
+			lambda.Start(httpadapter.New(h).ProxyWithContext);
+		} else {
+			lginfo.Log("transport", "http", "address", httpAddr, "msg", "listening")
+			errs <- http.ListenAndServe(httpAddr, h)
+		}
 	}()
 	go func() {
 		c := make(chan os.Signal)
