@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"syscall"
+	"io/ioutil"
 
 	"github.com/micromdm/scep/v2/csrverifier"
 	executablecsrverifier "github.com/micromdm/scep/v2/csrverifier/executable"
@@ -56,9 +57,10 @@ func main() {
 		flCSRVerifierExec   = flag.String("csrverifierexec", envString("SCEP_CSR_VERIFIER_EXEC", ""), "will be passed the CSRs for verification")
 		flDebug             = flag.Bool("debug", envBool("SCEP_LOG_DEBUG"), "enable debug logging")
 		flLogJSON           = flag.Bool("log-json", envBool("SCEP_LOG_JSON"), "output JSON logs")
-		flInitCA			= flag.Bool("init-ca", envBool("SCEP_INIT_CA"), "initialize CA if has no keys")	
+		flInitCA			= flag.Bool("init-ca", envBool("SCEP_INIT_CA"), "initialize CA if has no keys")
 		flSignServerAttrs   = flag.Bool("sign-server-attrs", envBool("SCEP_SIGN_SERVER_ATTRS"), "sign cert attrs for server usage")
 		flLambda     		= flag.Bool("lambda", envBool("SCEP_LAMBDA"), "Run using a lambda")
+		flDeleteCA     		= flag.Bool("delete-ca", envBool("SCEP_DELETE_CA"), "Debug flag. Clear the CA at the beginning.")
 	)
 	flag.Usage = func() {
 		flag.PrintDefaults()
@@ -105,12 +107,39 @@ func main() {
 	lginfo := level.Info(logger)
 
 	var err error
+
+	// ==========
+	// DEBUG
+	flag.VisitAll(func(f *flag.Flag) {
+		lginfo.Log("flag", f.Name, "value", f.Value)
+	})
+
+	files, err := ioutil.ReadDir(*flDepotPath)
+    if err != nil {
+        lginfo.Log("err", err, "msg", "trying to list files")
+    }
+
+    for _, file := range files {
+		lginfo.Log("file", file.Name(), "isDir", file.IsDir())
+    }
+
+	// use this if somehow index.txt was created without the keys
+	if *flDeleteCA {
+		e := os.RemoveAll(*flDepotPath)
+		if e != nil {
+			lginfo.Log("err", e, "msg", "attempted to remove index.txt")
+		}
+	}
+
+	// ===========
+
 	var depot scepdepot.Depot // cert storage
 	{
 		depot, err = file.NewFileDepot(*flDepotPath)
 
 		// if err but the initCA flag is set, create the depot
 		if err != nil && *flInitCA {
+			lginfo.Log("msg", "Initializing new CA")
 			var caCMD = flag.NewFlagSet("ca", flag.ExitOnError)
 			caMain(caCMD, os.Args[1:])
 			depot, err = file.NewFileDepot(*flDepotPath)
