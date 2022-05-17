@@ -34,7 +34,7 @@ func main() {
 	{
 		if len(os.Args) >= 2 {
 			if os.Args[1] == "ca" {
-				status := caMain(caCMD)
+				status := caMain(caCMD, false)
 				os.Exit(status)
 			}
 		}
@@ -53,6 +53,7 @@ func main() {
 		flCSRVerifierExec   = flag.String("csrverifierexec", envString("SCEP_CSR_VERIFIER_EXEC", ""), "will be passed the CSRs for verification")
 		flDebug             = flag.Bool("debug", envBool("SCEP_LOG_DEBUG"), "enable debug logging")
 		flLogJSON           = flag.Bool("log-json", envBool("SCEP_LOG_JSON"), "output JSON logs")
+		flInitCA			= flag.Bool("init-ca", envBool("SCEP_INIT_CA"), "initialize CA if has no keys")	
 		flSignServerAttrs   = flag.Bool("sign-server-attrs", envBool("SCEP_SIGN_SERVER_ATTRS"), "sign cert attrs for server usage")
 	)
 	flag.Usage = func() {
@@ -103,6 +104,14 @@ func main() {
 	var depot scepdepot.Depot // cert storage
 	{
 		depot, err = file.NewFileDepot(*flDepotPath)
+
+		// if err but the initCA flag is set, create the depot
+		if err != nil && *flInitCA {
+			var caCMD = flag.NewFlagSet("ca", flag.ExitOnError)
+			caMain(caCMD, true)
+			depot, err = file.NewFileDepot(*flDepotPath)
+		}
+
 		if err != nil {
 			lginfo.Log("err", err)
 			os.Exit(1)
@@ -185,7 +194,7 @@ func main() {
 	lginfo.Log("terminated", <-errs)
 }
 
-func caMain(cmd *flag.FlagSet) int {
+func caMain(cmd *flag.FlagSet, forceInit bool) int {
 	var (
 		flDepotPath  = cmd.String("depot", "depot", "path to ca folder")
 		flInit       = cmd.Bool("init", false, "create a new CA")
@@ -198,7 +207,7 @@ func caMain(cmd *flag.FlagSet) int {
 		flCountry    = cmd.String("country", "US", "country for CA cert")
 	)
 	cmd.Parse(os.Args[2:])
-	if *flInit {
+	if *flInit || forceInit {
 		fmt.Println("Initializing new CA")
 		key, err := createKey(*flKeySize, []byte(*flPassword), *flDepotPath)
 		if err != nil {
