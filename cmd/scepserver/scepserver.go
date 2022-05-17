@@ -37,7 +37,7 @@ func main() {
 	{
 		if len(os.Args) >= 2 {
 			if os.Args[1] == "ca" {
-				status := caMain(caCMD, false)
+				status := caMain(caCMD, os.Args[2:])
 				os.Exit(status)
 			}
 		}
@@ -112,7 +112,7 @@ func main() {
 		// if err but the initCA flag is set, create the depot
 		if err != nil && *flInitCA {
 			var caCMD = flag.NewFlagSet("ca", flag.ExitOnError)
-			caMain(caCMD, true)
+			caMain(caCMD, os.Args[1:])
 			depot, err = file.NewFileDepot(*flDepotPath)
 		}
 
@@ -205,20 +205,20 @@ func main() {
 	lginfo.Log("terminated", <-errs)
 }
 
-func caMain(cmd *flag.FlagSet, forceInit bool) int {
+func caMain(cmd *flag.FlagSet, args []string) int {
 	var (
-		flDepotPath  = cmd.String("depot", "depot", "path to ca folder")
-		flInit       = cmd.Bool("init", false, "create a new CA")
-		flYears      = cmd.Int("years", 10, "default CA years")
-		flKeySize    = cmd.Int("keySize", 4096, "rsa key size")
-		flCommonName = cmd.String("common_name", "MICROMDM SCEP CA", "common name (CN) for CA cert")
-		flOrg        = cmd.String("organization", "scep-ca", "organization for CA cert")
-		flOrgUnit    = cmd.String("organizational_unit", "SCEP CA", "organizational unit (OU) for CA cert")
-		flPassword   = cmd.String("key-password", "", "password to store rsa key")
-		flCountry    = cmd.String("country", "US", "country for CA cert")
+		flDepotPath  = cmd.String("depot", envString("SCEP_FILE_DEPOT", "depot"), "path to ca folder")
+		flInit       = cmd.Bool("init", envBool("SCEP_INIT_CA"), "create a new CA")
+		flYears      = cmd.Int("years", envInt("SCEP_CA_YEARS", 10), "default CA years")
+		flKeySize    = cmd.Int("keySize", envInt("SCEP_CA_KEYSIZE", 4096), "rsa key size")
+		flCommonName = cmd.String("common_name", envString("SCEP_CA_COMMON_NAME", "MICROMDM SCEP CA"), "common name (CN) for CA cert")
+		flOrg        = cmd.String("organization", envString("SCEP_CA_ORG", "scep-ca"), "organization for CA cert")
+		flOrgUnit    = cmd.String("organizational_unit", envString("SCEP_CA_OU", "SCEP CA"), "organizational unit (OU) for CA cert")
+		flPassword   = cmd.String("key-password", envString("SCEP_CA_PASSWORD", ""), "password to store rsa key")
+		flCountry    = cmd.String("country", envString("SCEP_CA_COUNTRY", "US"), "country for CA cert")
 	)
-	cmd.Parse(os.Args[2:])
-	if *flInit || forceInit {
+	cmd.Parse(args)
+	if *flInit {
 		fmt.Println("Initializing new CA")
 		key, err := createKey(*flKeySize, []byte(*flPassword), *flDepotPath)
 		if err != nil {
@@ -314,9 +314,21 @@ func pemCert(derBytes []byte) []byte {
 	return out
 }
 
-func envString(key, def string) string {
+func envString(key string, def string) string {
 	if env := os.Getenv(key); env != "" {
 		return env
+	}
+	return def
+}
+
+func envInt(key string, def int) int {
+	if env := os.Getenv(key); env != "" {
+		convertedEnv, err := strconv.Atoi(env)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+		return convertedEnv
 	}
 	return def
 }
