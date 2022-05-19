@@ -7,13 +7,13 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"strconv"
 	"syscall"
-	"io/ioutil"
 
 	"github.com/micromdm/scep/v2/csrverifier"
 	executablecsrverifier "github.com/micromdm/scep/v2/csrverifier/executable"
@@ -25,7 +25,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 
 	"github.com/aws/aws-lambda-go/lambda"
-	"github.com/awslabs/aws-lambda-go-api-proxy/httpadapter"	
+	"github.com/awslabs/aws-lambda-go-api-proxy/httpadapter"
 )
 
 // version info
@@ -46,7 +46,7 @@ func main() {
 
 	//main flags
 	var (
-		flVersion           = flag.Bool("version", false, "prints version information")
+		flVersion           = flag.Bool("version", envBool("SCEP_VERSION"), "prints version information")
 		flHTTPAddr          = flag.String("http-addr", envString("SCEP_HTTP_ADDR", ""), "http listen address. defaults to \":8080\"")
 		flPort              = flag.String("port", envString("SCEP_HTTP_LISTEN_PORT", "8080"), "http port to listen on (if you want to specify an address, use -http-addr instead)")
 		flDepotPath         = flag.String("depot", envString("SCEP_FILE_DEPOT", "depot"), "path to ca folder")
@@ -57,10 +57,10 @@ func main() {
 		flCSRVerifierExec   = flag.String("csrverifierexec", envString("SCEP_CSR_VERIFIER_EXEC", ""), "will be passed the CSRs for verification")
 		flDebug             = flag.Bool("debug", envBool("SCEP_LOG_DEBUG"), "enable debug logging")
 		flLogJSON           = flag.Bool("log-json", envBool("SCEP_LOG_JSON"), "output JSON logs")
-		flInitCA			= flag.Bool("init-ca", envBool("SCEP_INIT_CA"), "initialize CA if has no keys")
+		flInitCA            = flag.Bool("init-ca", envBool("SCEP_INIT_CA"), "initialize CA if has no keys")
 		flSignServerAttrs   = flag.Bool("sign-server-attrs", envBool("SCEP_SIGN_SERVER_ATTRS"), "sign cert attrs for server usage")
-		flLambda     		= flag.Bool("lambda", envBool("SCEP_LAMBDA"), "Run using a lambda")
-		flDeleteCA     		= flag.Bool("delete-ca", envBool("SCEP_DELETE_CA"), "Debug flag. Clear the CA at the beginning.")
+		flLambda            = flag.Bool("lambda", envBool("SCEP_LAMBDA"), "Run using a lambda")
+		flDeleteCA          = flag.Bool("delete-ca", envBool("SCEP_DELETE_CA"), "Debug flag. Clear the CA at the beginning.")
 	)
 	flag.Usage = func() {
 		flag.PrintDefaults()
@@ -115,13 +115,13 @@ func main() {
 	})
 
 	files, err := ioutil.ReadDir(*flDepotPath)
-    if err != nil {
-        lginfo.Log("err", err, "msg", "trying to list files")
-    }
+	if err != nil {
+		lginfo.Log("err", err, "msg", "trying to list files")
+	}
 
-    for _, file := range files {
+	for _, file := range files {
 		lginfo.Log("file", file.Name(), "isDir", file.IsDir())
-    }
+	}
 
 	// use this if somehow index.txt was created without the keys
 	if *flDeleteCA {
@@ -216,10 +216,14 @@ func main() {
 	errs := make(chan error, 2)
 	go func() {
 		if *flLambda {
+
 			// Proxies requests from the AWS API Gateway to go's http handlers
 			// https://github.com/awslabs/aws-lambda-go-api-proxy
+			//
+			// Note that the Gateway needs to have binary media support added through the `binaryMediaTypes` parameter.
+			// See this doc: https://docs.aws.amazon.com/apigateway/latest/developerguide/set-up-lambda-proxy-integrations.html
 			lginfo.Log("transport", "http", "context", "lambda", "msg", "listening")
-			lambda.Start(httpadapter.New(h).ProxyWithContext);
+			lambda.Start(httpadapter.New(h).ProxyWithContext)
 		} else {
 			lginfo.Log("transport", "http", "address", httpAddr, "msg", "listening")
 			errs <- http.ListenAndServe(httpAddr, h)
