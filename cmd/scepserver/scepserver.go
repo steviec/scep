@@ -241,7 +241,7 @@ func main() {
 func caMain(cmd *flag.FlagSet, args []string) int {
 	var (
 		flDepotPath  = cmd.String("depot", envString("SCEP_FILE_DEPOT", "depot"), "path to ca folder")
-		flInit       = cmd.Bool("init", envBool("SCEP_INIT_CA"), "create a new CA")
+		flInit       = cmd.Bool("init-ca", envBool("SCEP_INIT_CA"), "create a new CA")
 		flYears      = cmd.Int("years", envInt("SCEP_CA_YEARS", 10), "default CA years")
 		flKeySize    = cmd.Int("keySize", envInt("SCEP_CA_KEYSIZE", 4096), "rsa key size")
 		flCommonName = cmd.String("common_name", envString("SCEP_CA_COMMON_NAME", "MICROMDM SCEP CA"), "common name (CN) for CA cert")
@@ -249,10 +249,30 @@ func caMain(cmd *flag.FlagSet, args []string) int {
 		flOrgUnit    = cmd.String("organizational_unit", envString("SCEP_CA_OU", "SCEP CA"), "organizational unit (OU) for CA cert")
 		flPassword   = cmd.String("key-password", envString("SCEP_CA_PASSWORD", ""), "password to store rsa key")
 		flCountry    = cmd.String("country", envString("SCEP_CA_COUNTRY", "US"), "country for CA cert")
+		flInlineCert = cmd.String("inline-cert", envString("SCEP_INLINE_CERT", ""), "inline CA certficiate")
+		flInlineKey  = cmd.String("inline-key", envString("SCEP_INLINE_KEY", ""), "inline CA private key")
 	)
 	cmd.Parse(args)
+
 	if *flInit {
+		fmt.Println("Initializing new CA via main CLI")
+	} else {
 		fmt.Println("Initializing new CA")
+	}
+
+	if *flInlineCert != "" && *flInlineKey != "" {
+		fmt.Println("Storing ENV-provided cert and key to the depot")
+
+		if err := storeFileInDepot(*flDepotPath, "ca.pem", []byte(*flInlineCert)); err != nil {
+			fmt.Println(err)
+			return 1
+		}
+		if err := storeFileInDepot(*flDepotPath, "ca.key", []byte(*flInlineKey)); err != nil {
+			fmt.Println(err)
+			return 1
+		}
+	} else {
+		fmt.Println("Generating new key and cert")
 		key, err := createKey(*flKeySize, []byte(*flPassword), *flDepotPath)
 		if err != nil {
 			fmt.Println(err)
@@ -303,6 +323,27 @@ func createKey(bits int, password []byte, depot string) (*rsa.PrivateKey, error)
 	return key, nil
 }
 
+func storeFileInDepot(depot string, filename string, data []byte) error {
+	// create depot folder if missing
+	if err := os.MkdirAll(depot, 0755); err != nil {
+		return err
+	}
+	name := filepath.Join(depot, filename)
+	file, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0400)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	if _, err := file.Write(data); err != nil {
+		file.Close()
+		os.Remove(name)
+		return err
+	}
+
+	return nil
+}
+
 func createCertificateAuthority(key *rsa.PrivateKey, years int, commonName string, organization string, organizationalUnit string, country string, depot string) error {
 	cert := scepdepot.NewCACert(
 		scepdepot.WithYears(years),
@@ -316,20 +357,7 @@ func createCertificateAuthority(key *rsa.PrivateKey, years int, commonName strin
 		return err
 	}
 
-	name := filepath.Join(depot, "ca.pem")
-	file, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0400)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	if _, err := file.Write(pemCert(crtBytes)); err != nil {
-		file.Close()
-		os.Remove(name)
-		return err
-	}
-
-	return nil
+	return storeFileInDepot(depot, "ca.pem", pemCert(crtBytes))
 }
 
 const (
