@@ -251,6 +251,8 @@ func caMain(cmd *flag.FlagSet, args []string) int {
 		flCountry    = cmd.String("country", envString("SCEP_CA_COUNTRY", "US"), "country for CA cert")
 		flInlineCert = cmd.String("inline-cert", envString("SCEP_INLINE_CERT", ""), "inline CA certficiate")
 		flInlineKey  = cmd.String("inline-key", envString("SCEP_INLINE_KEY", ""), "inline CA private key")
+		flPathCert   = cmd.String("path-cert", envString("SCEP_PATH_CERT", ""), "inline CA certficiate")
+		flPathKey    = cmd.String("path-key", envString("SCEP_PATH_KEY", ""), "inline CA private key")
 	)
 	cmd.Parse(args)
 
@@ -271,6 +273,16 @@ func caMain(cmd *flag.FlagSet, args []string) int {
 			fmt.Println(err)
 			return 1
 		}
+	} else if *flPathCert != "" && *flPathKey != "" {
+		fmt.Println("Coping key and cert into CA depot")
+		if err := copyFileToDepot(*flPathCert, *flDepotPath, "ca.pem"); err != nil {
+			fmt.Println(err)
+			return 1
+		}
+		if err := copyFileToDepot(*flPathKey, *flDepotPath, "ca.key"); err != nil {
+			fmt.Println(err)
+			return 1
+		}
 	} else {
 		fmt.Println("Generating new key and cert")
 		key, err := createKey(*flKeySize, []byte(*flPassword), *flDepotPath)
@@ -285,6 +297,19 @@ func caMain(cmd *flag.FlagSet, args []string) int {
 	}
 
 	return 0
+}
+
+func copyFileToDepot(sourceFile string, depotPath string, filename string) error {
+	input, err := ioutil.ReadFile(sourceFile)
+	if err != nil {
+		return err
+	}
+
+	err = ioutil.WriteFile(filepath.Join(depotPath, filename), input, 0644)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // create a key, save it to depot and return it for further usage.
