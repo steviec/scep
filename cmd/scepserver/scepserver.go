@@ -300,6 +300,11 @@ func caMain(cmd *flag.FlagSet, args []string) int {
 }
 
 func copyFileToDepot(sourceFile string, depotPath string, filename string) error {
+	// create depot folder if missing
+	if err := os.MkdirAll(depotPath, 0755); err != nil {
+		return err
+	}
+
 	input, err := ioutil.ReadFile(sourceFile)
 	if err != nil {
 		return err
